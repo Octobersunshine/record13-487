@@ -7,8 +7,8 @@ use uuid::Uuid;
 
 use crate::models::{
     BatchCreateBusinessHoursRequest, BusinessHours, BusinessHoursResponse,
-    BusinessStatusResponse, CreateBusinessHoursRequest, Store, TodayHours, days_until_weekday,
-    weekday_name,
+    BusinessStatusResponse, CreateBusinessHoursRequest, SetUniformHoursRequest, Store,
+    TodayHours, days_until_weekday, weekday_name,
 };
 
 #[derive(Debug, Default, Clone)]
@@ -157,6 +157,72 @@ pub async fn batch_add_business_hours(
         store_hours_vec.retain(|h| h.weekday != item.weekday);
         store_hours_vec.push(hours);
     }
+
+    Ok(responses)
+}
+
+pub async fn set_uniform_hours(
+    state: &AppState,
+    req: SetUniformHoursRequest,
+) -> Result<Vec<BusinessHoursResponse>, String> {
+    if state.inner.stores.read().await.get(&req.store_id).is_none() {
+        return Err("门店不存在".to_string());
+    }
+
+    if req.apply_weekdays.is_empty() {
+        return Err("应用的星期列表不能为空".to_string());
+    }
+
+    let mut unique_weekdays = Vec::new();
+    for w in &req.apply_weekdays {
+        if !unique_weekdays.contains(w) {
+            unique_weekdays.push(*w);
+        }
+    }
+
+    let mut responses = Vec::new();
+    let mut store_hours = state.inner.business_hours.write().await;
+    let store_hours_vec = store_hours.entry(req.store_id).or_insert_with(Vec::new);
+
+    let weekday_order: [Weekday; 7] = [
+        Weekday::Mon,
+        Weekday::Tue,
+        Weekday::Wed,
+        Weekday::Thu,
+        Weekday::Fri,
+        Weekday::Sat,
+        Weekday::Sun,
+    ];
+
+    for weekday in unique_weekdays.iter() {
+        let hours = BusinessHours {
+            id: Uuid::new_v4(),
+            store_id: req.store_id,
+            weekday: *weekday,
+            open_time: req.open_time,
+            close_time: req.close_time,
+            is_closed: req.is_closed,
+        };
+
+        responses.push(BusinessHoursResponse {
+            id: hours.id,
+            store_id: hours.store_id,
+            weekday: hours.weekday,
+            weekday_name: weekday_name(hours.weekday).to_string(),
+            open_time: hours.open_time,
+            close_time: hours.close_time,
+            is_closed: hours.is_closed,
+        });
+
+        store_hours_vec.retain(|h| h.weekday != *weekday);
+        store_hours_vec.push(hours);
+    }
+
+    responses.sort_by(|a, b| {
+        let idx_a = weekday_order.iter().position(|w| w == &a.weekday).unwrap_or(7);
+        let idx_b = weekday_order.iter().position(|w| w == &b.weekday).unwrap_or(7);
+        idx_a.cmp(&idx_b)
+    });
 
     Ok(responses)
 }

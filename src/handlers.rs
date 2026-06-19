@@ -7,11 +7,11 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::models::{
-    BatchCreateBusinessHoursRequest, CreateBusinessHoursRequest,
+    BatchCreateBusinessHoursRequest, CreateBusinessHoursRequest, SetUniformHoursRequest,
 };
 use crate::store::{
     add_business_hours, batch_add_business_hours, create_store, get_business_hours,
-    get_business_status, get_store, AppState,
+    get_business_status, get_store, set_uniform_hours, AppState,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -128,6 +128,24 @@ pub async fn batch_add_business_hours_handler(
         Err(e) => {
             let response: ApiResponse<String> = ApiResponse::error(&e);
             (StatusCode::NOT_FOUND, Json(response))
+        }
+    }
+}
+
+pub async fn set_uniform_hours_handler(
+    State(state): State<AppState>,
+    Json(req): Json<SetUniformHoursRequest>,
+) -> impl IntoResponse {
+    if !req.is_closed && req.close_time == req.open_time {
+        let response: ApiResponse<String> = ApiResponse::error("结束时间不能等于开始时间");
+        return (StatusCode::BAD_REQUEST, Json(response));
+    }
+
+    match set_uniform_hours(&state, req).await {
+        Ok(hours) => (StatusCode::CREATED, Json(ApiResponse::success(hours))),
+        Err(e) => {
+            let response: ApiResponse<String> = ApiResponse::error(&e);
+            (StatusCode::BAD_REQUEST, Json(response))
         }
     }
 }

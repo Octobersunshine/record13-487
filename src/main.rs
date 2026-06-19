@@ -11,7 +11,7 @@ use tower_http::cors::{Any, CorsLayer};
 use crate::handlers::{
     add_business_hours_handler, batch_add_business_hours_handler, create_store_handler,
     get_business_hours_handler, get_business_status_handler, get_store_handler, health_check,
-    ApiResponse,
+    set_uniform_hours_handler, ApiResponse,
 };
 use crate::store::AppState;
 
@@ -42,6 +42,10 @@ fn create_router(state: AppState) -> Router {
         .route(
             "/stores/:store_id/hours/batch",
             post(batch_add_business_hours_handler),
+        )
+        .route(
+            "/stores/:store_id/hours/uniform",
+            post(set_uniform_hours_handler),
         )
         .route("/stores/:store_id/hours", get(get_business_hours_handler))
         .route(
@@ -78,6 +82,7 @@ async fn main() {
     tracing::info!("  GET  /stores/:store_id                 - 查询门店信息");
     tracing::info!("  POST /stores/:store_id/hours           - 新增单个营业时间段");
     tracing::info!("  POST /stores/:store_id/hours/batch     - 批量新增营业时间段");
+    tracing::info!("  POST /stores/:store_id/hours/uniform  - 一键设置统一营业时段");
     tracing::info!("  GET  /stores/:store_id/hours           - 查询门店营业时间段");
     tracing::info!("  GET  /stores/:store_id/status          - 查询门店营业状态");
 

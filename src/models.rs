@@ -37,6 +37,29 @@ pub struct BatchCreateBusinessHoursRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetUniformHoursRequest {
+    pub store_id: Uuid,
+    pub open_time: NaiveTime,
+    pub close_time: NaiveTime,
+    #[serde(default)]
+    pub is_closed: bool,
+    #[serde(default = "default_seven_days")]
+    pub apply_weekdays: Vec<Weekday>,
+}
+
+fn default_seven_days() -> Vec<Weekday> {
+    vec![
+        Weekday::Mon,
+        Weekday::Tue,
+        Weekday::Wed,
+        Weekday::Thu,
+        Weekday::Fri,
+        Weekday::Sat,
+        Weekday::Sun,
+    ]
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BusinessHoursItem {
     pub weekday: Weekday,
     pub open_time: NaiveTime,
