@@ -3,7 +3,6 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use chrono::NaiveTime;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -94,8 +93,8 @@ pub async fn add_business_hours_handler(
     State(state): State<AppState>,
     Json(req): Json<CreateBusinessHoursRequest>,
 ) -> impl IntoResponse {
-    if !req.is_closed && req.close_time <= req.open_time && !(req.close_time < NaiveTime::from_hms_opt(12, 0, 0).unwrap() && req.open_time > NaiveTime::from_hms_opt(12, 0, 0).unwrap()) {
-        let response: ApiResponse<String> = ApiResponse::error("结束时间必须晚于开始时间，除非跨午夜营业");
+    if !req.is_closed && req.close_time == req.open_time {
+        let response: ApiResponse<String> = ApiResponse::error("结束时间不能等于开始时间");
         return (StatusCode::BAD_REQUEST, Json(response));
     }
 
@@ -118,8 +117,8 @@ pub async fn batch_add_business_hours_handler(
     }
 
     for item in &req.hours {
-        if !item.is_closed && item.close_time <= item.open_time && !(item.close_time < NaiveTime::from_hms_opt(12, 0, 0).unwrap() && item.open_time > NaiveTime::from_hms_opt(12, 0, 0).unwrap()) {
-            let response: ApiResponse<String> = ApiResponse::error("营业时间配置错误：结束时间必须晚于开始时间");
+        if !item.is_closed && item.close_time == item.open_time {
+            let response: ApiResponse<String> = ApiResponse::error("营业时间配置错误：结束时间不能等于开始时间");
             return (StatusCode::BAD_REQUEST, Json(response));
         }
     }

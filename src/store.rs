@@ -222,10 +222,27 @@ pub async fn get_business_status(
     let current_time = now.time();
     let current_date = now.date();
 
+    let weekday_order: [Weekday; 7] = [
+        Weekday::Mon,
+        Weekday::Tue,
+        Weekday::Wed,
+        Weekday::Thu,
+        Weekday::Fri,
+        Weekday::Sat,
+        Weekday::Sun,
+    ];
+    let current_idx = weekday_order
+        .iter()
+        .position(|w| w == &current_weekday)
+        .unwrap();
+    let prev_weekday = weekday_order[(current_idx + 6) % 7];
+    let prev_date = current_date - Duration::days(1);
+
     let store_hours = state.inner.business_hours.read().await;
     let hours = store_hours.get(&store_id).cloned().unwrap_or_default();
 
     let today_hours_opt = hours.iter().find(|h| h.weekday == current_weekday);
+    let prev_day_hours_opt = hours.iter().find(|h| h.weekday == prev_weekday);
 
     let today_hours = today_hours_opt.map(|h| TodayHours {
         open_time: h.open_time,
@@ -233,30 +250,58 @@ pub async fn get_business_status(
         is_closed: h.is_closed,
     });
 
-    let (is_open, current_status, next_close_time) = match today_hours_opt {
-        Some(h) if !h.is_closed => {
-            let within_hours = h.contains(current_time);
-            if within_hours {
-                let close_dt = if h.close_time > h.open_time {
-                    NaiveDateTime::new(current_date, h.close_time)
-                } else if current_time >= h.open_time {
-                    NaiveDateTime::new(current_date + Duration::days(1), h.close_time)
-                } else {
-                    NaiveDateTime::new(current_date, h.close_time)
-                };
-                (true, "营业中".to_string(), Some(close_dt))
-            } else {
-                (false, "休息中".to_string(), None)
-            }
+    let mut is_open = false;
+    let mut current_status = String::new();
+    let mut next_close_time: Option<NaiveDateTime> = None;
+
+    if let Some(prev_h) = prev_day_hours_opt {
+        let is_overnight = prev_h.close_time < prev_h.open_time;
+        if !prev_h.is_closed && is_overnight && current_time < prev_h.close_time {
+            is_open = true;
+            current_status = "营业中".to_string();
+            next_close_time = Some(NaiveDateTime::new(current_date, prev_h.close_time));
         }
-        Some(_) => (false, "今日休息".to_string(), None),
-        None => (false, "未设置营业时间".to_string(), None),
-    };
+    }
+
+    if !is_open {
+        match today_hours_opt {
+            Some(h) if !h.is_closed => {
+                let within_hours = h.contains(current_time);
+                if within_hours {
+                    let close_dt = if h.close_time > h.open_time {
+                        NaiveDateTime::new(current_date, h.close_time)
+                    } else if current_time >= h.open_time {
+                        NaiveDateTime::new(current_date + Duration::days(1), h.close_time)
+                    } else {
+                        NaiveDateTime::new(current_date, h.close_time)
+                    };
+                    is_open = true;
+                    current_status = "营业中".to_string();
+                    next_close_time = Some(close_dt);
+                } else {
+                    current_status = "休息中".to_string();
+                }
+            }
+            Some(_) => current_status = "今日休息".to_string(),
+            None => current_status = "未设置营业时间".to_string(),
+        }
+    } else {
+        if today_hours_opt.is_none() {
+            current_status = "营业中(凌晨时段)".to_string();
+        }
+    }
 
     let next_open_time = if is_open {
         None
     } else {
-        find_next_open_time(&hours, current_weekday, current_time, current_date)
+        find_next_open_time(
+            &hours,
+            current_weekday,
+            prev_weekday,
+            current_time,
+            current_date,
+            prev_date,
+        )
     };
 
     Ok(BusinessStatusResponse {
@@ -275,8 +320,10 @@ pub async fn get_business_status(
 fn find_next_open_time(
     hours: &[BusinessHours],
     current_weekday: Weekday,
+    _prev_weekday: Weekday,
     current_time: NaiveTime,
     current_date: NaiveDate,
+    _prev_date: NaiveDate,
 ) -> Option<NaiveDateTime> {
     let weekday_order: [Weekday; 7] = [
         Weekday::Mon,
@@ -290,7 +337,7 @@ fn find_next_open_time(
 
     let today_hours = hours.iter().find(|h| h.weekday == current_weekday);
     if let Some(h) = today_hours {
-        if !h.is_closed && current_time < h.open_time && h.close_time > h.open_time {
+        if !h.is_closed && current_time < h.open_time {
             return Some(NaiveDateTime::new(current_date, h.open_time));
         }
     }
@@ -303,7 +350,7 @@ fn find_next_open_time(
     for i in 1..=7 {
         let idx = (current_idx + i) % 7;
         let weekday = weekday_order[idx];
-        let days_offset = days_until_weekday(current_date, weekday);
+        let days_offset = if i == 0 { 0 } else { i as i64 };
         let target_date = current_date + Duration::days(days_offset);
 
         if let Some(h) = hours.iter().find(|h| h.weekday == weekday) {
